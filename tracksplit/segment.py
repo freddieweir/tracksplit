@@ -113,7 +113,7 @@ def _split_unknown(segs, cfg, wav):
         out += [Segment(a, b, "unknown") for a, b in zip(edges, edges[1:])]
     return out
 
-def _novelty_cuts(y, sr, min_s, kernel_s=20.0, delta=0.1) -> np.ndarray:
+def _novelty_cuts(y, sr, min_s, kernel_s=40.0, delta=0.3) -> np.ndarray:
     """Foote novelty: cosine self-similarity of ~1 s log-mel frames, checkerboard kernel along the diagonal,
     librosa peak_pick with peaks >= min_s apart and >= min_s from either edge. Times relative to y."""
     import librosa
