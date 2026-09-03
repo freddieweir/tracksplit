@@ -22,8 +22,10 @@ def _load():
         from panns_inference import AudioTagging, labels
         import torch
         dev = "mps" if torch.backends.mps.is_available() else "cpu"
-        _model = (AudioTagging(checkpoint_path=None, device=dev),
-                  labels.index("Music"), labels.index("Speech"), labels.index("Silence"))
+        at = AudioTagging(checkpoint_path=None, device=dev)
+        if dev == "mps":  # panns_inference only knows cuda/cpu; move it ourselves
+            at.model.to(dev); at.device = dev
+        _model = (at, labels.index("Music"), labels.index("Speech"), labels.index("Silence"))
     return _model
 
 def score(wav: Path, hop_s: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
