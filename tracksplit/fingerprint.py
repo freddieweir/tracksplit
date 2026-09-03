@@ -25,7 +25,11 @@ class ACR:
                   "signature": sig, "data_type": "audio", "signature_version": "1"},
             timeout=30)
         r.raise_for_status()
-        return r.json()
+        resp = r.json()
+        code = resp.get("status", {}).get("code", -1)
+        if code not in (0, 1001):  # 3001 key / 3003 quota / 3014 sig / 3015 qps / 2004 ...: don't cache, don't spend more
+            raise RuntimeError(f"ACR status {code}: {resp.get('status', {}).get('msg')}")
+        return resp
 
 def parse(resp: dict) -> dict | None:
     """Flatten ACR response to {artist, title, score, play_offset_s} or None."""
