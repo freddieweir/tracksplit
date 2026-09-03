@@ -1,0 +1,22 @@
+# local data: VODs, outputs, the ACR cache DB and its backups are never committed
+vods/
+tracksplit-out/
+*.mp4
+*.wav
+*.db
+*.db.bak-*
+
+# environment
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+uv.lock
+.DS_Store
+
+# secrets / local config (ACR creds come from the environment)
+.env
+*.env
+
+# plugin memory
+.remember/
