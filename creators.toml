@@ -1,0 +1,18 @@
+# Per-creator tuning. Section name = subdirectory under $TS_VODS (vods/<creator>/*.mp4).
+# Anything unset falls back to [default].
+
+[default]
+gate_window_s   = 1.0     # classifier hop
+gate_open_s     = 10.0    # music must persist this long to open a region
+gate_close_s    = 8.0     # music must be absent this long to close a region
+music_threshold = 0.45    # PANNs "Music" probability
+fp_sample_s     = 15      # seconds of audio per ACR query
+fp_stride_s     = 30      # gap between query starts inside a music region
+min_segment_s   = 45      # anything shorter is merged into a neighbour or dropped
+keyframe_pad_s  = 2.0     # -c copy snaps to keyframes; pad both sides
+export_talk     = false   # write files for non-music regions too
+
+# Example override for a chatty creator
+[chattycreator]
+gate_open_s     = 15.0
+music_threshold = 0.55
