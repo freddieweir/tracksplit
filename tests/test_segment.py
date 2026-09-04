@@ -137,3 +137,23 @@ def test_short_segment_merges_by_normalised_label():
     kept, dropped = segment._drop_short(segs, CFG)
     assert [(s.title, s.start, s.end) for s in kept] == [("Song A", 0.0, 180.0), ("Other", 180.0, 400.0)]
     assert dropped == []
+
+
+def test_same_play_is_bridged_across_short_gate_gap():
+    # a breakdown the gate closed on: 15 s "talk" inside one play; anchors agree on both sides
+    regs = [Region(0, 100, "music"), Region(100, 115, "talk"), Region(115, 300, "music")]
+    hits = [hit(t, "A", anchor=0) for t in range(0, 90, 30)] + [hit(t, "A", anchor=0) for t in range(115, 300, 30)]
+    segs, dropped = build(regs, hits)
+    assert [(s.title, s.start, s.end, s.kind) for s in segs] == [("A", 0.0, 300.0, "song")]
+    assert dropped == []
+
+
+def test_gap_is_kept_when_sides_differ_or_gap_is_long():
+    regs = [Region(0, 100, "music"), Region(100, 115, "talk"), Region(115, 300, "music")]
+    hits = [hit(t, "A", anchor=0) for t in range(0, 90, 30)] + [hit(t, "B", anchor=115) for t in range(115, 300, 30)]
+    segs, _ = build(regs, hits)
+    assert [s.kind for s in segs] == ["song", "talk", "song"]
+    regs = [Region(0, 100, "music"), Region(100, 160, "talk"), Region(160, 400, "music")]  # 60 s > min_segment_s
+    hits = [hit(t, "A", anchor=0) for t in range(0, 90, 30)] + [hit(t, "A", anchor=0) for t in range(160, 400, 30)]
+    segs, _ = build(regs, hits)
+    assert [s.kind for s in segs] == ["song", "talk", "song"]

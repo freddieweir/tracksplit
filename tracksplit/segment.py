@@ -106,8 +106,28 @@ def build(regs: list[Region], hits: list[dict], cfg: CreatorCfg, wav: Path | Non
         else:
             out.append(Segment(r.start, r.end, "unknown"))
         segs += [s for s in out if s.end > s.start]
+    segs = _bridge(segs, cfg)
     segs = _split_unknown(segs, cfg, wav)
     return _drop_short(segs, cfg)
+
+def _bridge(segs, cfg):
+    """One play split by a short non-music gap (a breakdown the gate closed on) is rejoined when the
+    sides agree by anchor or title and the gap totals <= min_segment_s."""
+    tol = cfg.fp_stride_s / 2
+    out: list[Segment] = []
+    for s in segs:
+        if s.kind == "song":
+            k = len(out) - 1
+            while k >= 0 and out[k].kind != "song":
+                k -= 1
+            gap = out[k+1:] if k >= 0 else []
+            if gap and sum(g.end - g.start for g in gap) <= cfg.min_segment_s and \
+               (_same_play(out[k].anchor, s.anchor, tol) or _same_title(out[k].title, s.title)):
+                p = out[k]; del out[k+1:]
+                p.end, p.confidence = s.end, (p.confidence + s.confidence) / 2
+                continue
+        out.append(s)
+    return out
 
 def _mk(run, region_start) -> Segment:
     """One play. Start = median anchor, i.e. where play_offset says the song began in the VOD; never later
