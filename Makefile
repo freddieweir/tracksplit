@@ -1,5 +1,5 @@
 VODS   ?= $(HOME)/vods
-OUT    ?= $(HOME)/tracksplit-out
+OUT    ?= $(CURDIR)/tracksplit-out
 DB     ?= $(OUT)/tracksplit.db
 
 .PHONY: setup ingest dry run tui status reset
