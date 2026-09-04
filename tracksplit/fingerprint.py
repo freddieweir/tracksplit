@@ -1,7 +1,9 @@
-"""ACRCloud identify, cached per (vod_hash, offset). Only called inside music regions."""
+"""ACRCloud identify, cached per (vod_hash, offset). Only called inside music regions.
+The fingerprint is computed locally with the ACRCloud SDK; only that (~4 KB) is uploaded, never audio."""
 from __future__ import annotations
 import base64, hashlib, hmac, io, os, time
 import numpy as np, requests, soundfile as sf
+from acrcloud import acrcloud_extr_tool
 from pathlib import Path
 from .config import CreatorCfg
 from .gate import Region
@@ -15,14 +17,16 @@ class ACR:
 
     def identify(self, pcm16k: np.ndarray) -> dict:
         buf = io.BytesIO(); sf.write(buf, pcm16k, 16000, format="WAV", subtype="PCM_16")
-        data = buf.getvalue()
+        fp = acrcloud_extr_tool.create_fingerprint_by_filebuffer(buf.getvalue(), 0, len(pcm16k) // 16000, False)
+        if not fp:  # silence / no landmarks: nothing to send (the SDK refuses these too), treat as a miss
+            return {"status": {"msg": "No result (empty fingerprint, nothing sent)", "code": 1001}}
         ts = str(int(time.time()))
-        sig_str = "\n".join(["POST", "/v1/identify", self.key, "audio", "1", ts])
+        sig_str = "\n".join(["POST", "/v1/identify", self.key, "fingerprint", "1", ts])
         sig = base64.b64encode(hmac.new(self.secret, sig_str.encode(), hashlib.sha1).digest()).decode()
         r = requests.post(f"https://{self.host}/v1/identify",
-            files={"sample": ("s.wav", data, "audio/wav")},
-            data={"access_key": self.key, "sample_bytes": len(data), "timestamp": ts,
-                  "signature": sig, "data_type": "audio", "signature_version": "1"},
+            files={"sample": ("sample", fp, "application/octet-stream")},
+            data={"access_key": self.key, "sample_bytes": len(fp), "timestamp": ts,
+                  "signature": sig, "data_type": "fingerprint", "signature_version": "1"},
             timeout=30)
         r.raise_for_status()
         resp = r.json()
