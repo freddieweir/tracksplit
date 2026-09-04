@@ -10,27 +10,36 @@ from .gate import Region
 from .queue import Queue
 
 class ACR:
+    QPS = 2  # account limit (free trial: 2); requests are spaced >= 1/QPS apart
+
     def __init__(self):
         self.host = os.environ["ACR_HOST"]
         self.key = os.environ["ACR_KEY"]
         self.secret = os.environ["ACR_SECRET"].encode()
+        self._last = 0.0
 
     def identify(self, pcm16k: np.ndarray) -> dict:
         buf = io.BytesIO(); sf.write(buf, pcm16k, 16000, format="WAV", subtype="PCM_16")
         fp = acrcloud_extr_tool.create_fingerprint_by_filebuffer(buf.getvalue(), 0, len(pcm16k) // 16000, False)
         if not fp:  # silence / no landmarks: nothing to send (the SDK refuses these too), treat as a miss
             return {"status": {"msg": "No result (empty fingerprint, nothing sent)", "code": 1001}}
-        ts = str(int(time.time()))
-        sig_str = "\n".join(["POST", "/v1/identify", self.key, "fingerprint", "1", ts])
-        sig = base64.b64encode(hmac.new(self.secret, sig_str.encode(), hashlib.sha1).digest()).decode()
-        r = requests.post(f"https://{self.host}/v1/identify",
-            files={"sample": ("sample", fp, "application/octet-stream")},
-            data={"access_key": self.key, "sample_bytes": len(fp), "timestamp": ts,
-                  "signature": sig, "data_type": "fingerprint", "signature_version": "1"},
-            timeout=30)
-        r.raise_for_status()
-        resp = r.json()
-        code = resp.get("status", {}).get("code", -1)
+        for attempt in (1, 2):
+            time.sleep(max(0.0, self._last + 1 / self.QPS - time.monotonic()))
+            self._last = time.monotonic()
+            ts = str(int(time.time()))
+            sig_str = "\n".join(["POST", "/v1/identify", self.key, "fingerprint", "1", ts])
+            sig = base64.b64encode(hmac.new(self.secret, sig_str.encode(), hashlib.sha1).digest()).decode()
+            r = requests.post(f"https://{self.host}/v1/identify",
+                files={"sample": ("sample", fp, "application/octet-stream")},
+                data={"access_key": self.key, "sample_bytes": len(fp), "timestamp": ts,
+                      "signature": sig, "data_type": "fingerprint", "signature_version": "1"},
+                timeout=30)
+            r.raise_for_status()
+            resp = r.json()
+            code = resp.get("status", {}).get("code", -1)
+            if code != 3015 or attempt == 2:
+                break
+            time.sleep(1.0)  # QPS exceeded: back off once
         if code not in (0, 1001):  # 3001 key / 3003 quota / 3014 sig / 3015 qps / 2004 ...: don't cache, don't spend more
             raise RuntimeError(f"ACR status {code}: {resp.get('status', {}).get('msg')}")
         return resp

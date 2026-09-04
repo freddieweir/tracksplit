@@ -1,5 +1,5 @@
 """Only a locally computed ACRCloud fingerprint leaves the machine; never audio. HTTP is mocked, extractor is real."""
-import base64, hashlib, hmac
+import base64, hashlib, hmac, time
 import numpy as np, pytest, requests
 from tracksplit import fingerprint
 
@@ -21,9 +21,9 @@ def acr(monkeypatch):
         monkeypatch.setenv(k, v)
     captured = {}
     def fake_post(url, files=None, data=None, timeout=None):
-        captured.update(url=url, files=files, data=data)
-        return _Resp(fake_post.body)
-    fake_post.body = NO_RESULT
+        captured.update(url=url, files=files, data=data, n=captured.get("n", 0) + 1)
+        return _Resp(fake_post.bodies.pop(0) if fake_post.bodies else fake_post.body)
+    fake_post.body, fake_post.bodies = NO_RESULT, []
     monkeypatch.setattr(requests, "post", fake_post)
     return fingerprint.ACR(), captured, fake_post
 
@@ -64,3 +64,17 @@ def test_parse_flattens_documented_response():
     assert fingerprint.parse(DOC_OK) == {"artist": "Some Artist", "title": "Some Song", "score": 100,
                                          "play_offset_s": 9.04, "acr_id": "0123456789abcdef0123456789abcdef"}
     assert fingerprint.parse(NO_RESULT) is None
+
+
+def test_requests_are_spaced_for_the_qps_limit(acr):
+    a, cap, _ = acr
+    t0 = time.monotonic()
+    for _ in range(3):
+        a.identify(music())
+    assert cap["n"] == 3 and time.monotonic() - t0 >= 2 * (1 / fingerprint.ACR.QPS) - 0.05
+
+
+def test_qps_exceeded_is_retried_once(acr):
+    a, cap, post = acr
+    post.bodies = [{"status": {"msg": "QpS limit exceeded", "code": 3015, "version": "1.0"}}, NO_RESULT]
+    assert a.identify(music()) == NO_RESULT and cap["n"] == 2
