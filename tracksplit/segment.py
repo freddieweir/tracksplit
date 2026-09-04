@@ -110,23 +110,35 @@ def build(regs: list[Region], hits: list[dict], cfg: CreatorCfg, wav: Path | Non
     segs = _split_unknown(segs, cfg, wav)
     return _drop_short(segs, cfg)
 
+def _bridge_target(out, s, cfg):
+    """Index of the earlier song that s continues, or None. Everything between must be shorter than a
+    segment: up to 2*min_segment_s of it (gate breaks, misfires) when the anchors agree, up to
+    min_segment_s of non-music when only the title agrees."""
+    tol, mn = cfg.fp_stride_s / 2, cfg.min_segment_s
+    gap, song_between = 0.0, False
+    for k in range(len(out) - 1, -1, -1):
+        p = out[k]
+        if p.kind == "song" and gap > 0 and (_same_play(p.anchor, s.anchor, tol) or
+                                             (not song_between and gap <= mn and _same_title(p.title, s.title))):
+            return k
+        if p.end - p.start >= mn:
+            return None  # a real segment sits between
+        gap += p.end - p.start
+        song_between = song_between or p.kind == "song"
+        if gap > 2 * mn:
+            return None
+    return None
+
 def _bridge(segs, cfg):
-    """One play split by a short non-music gap (a breakdown the gate closed on) is rejoined when the
-    sides agree by anchor or title and the gap totals <= min_segment_s."""
-    tol = cfg.fp_stride_s / 2
+    """One play split by a short gap (a breakdown the gate closed on, a misfire) is rejoined."""
     out: list[Segment] = []
     for s in segs:
-        if s.kind == "song":
-            k = len(out) - 1
-            while k >= 0 and out[k].kind != "song":
-                k -= 1
-            gap = out[k+1:] if k >= 0 else []
-            if gap and sum(g.end - g.start for g in gap) <= cfg.min_segment_s and \
-               (_same_play(out[k].anchor, s.anchor, tol) or _same_title(out[k].title, s.title)):
-                p = out[k]; del out[k+1:]
-                p.end, p.confidence = s.end, (p.confidence + s.confidence) / 2
-                continue
-        out.append(s)
+        k = _bridge_target(out, s, cfg) if s.kind == "song" else None
+        if k is None:
+            out.append(s)
+        else:
+            p = out[k]; del out[k+1:]
+            p.end, p.confidence = s.end, (p.confidence + s.confidence) / 2
     return out
 
 def _mk(run, region_start) -> Segment:

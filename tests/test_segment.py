@@ -157,3 +157,21 @@ def test_gap_is_kept_when_sides_differ_or_gap_is_long():
     hits = [hit(t, "A", anchor=0) for t in range(0, 90, 30)] + [hit(t, "A", anchor=0) for t in range(160, 400, 30)]
     segs, _ = build(regs, hits)
     assert [s.kind for s in segs] == ["song", "talk", "song"]
+
+
+def test_same_play_is_bridged_across_short_song_misfires_when_anchors_agree():
+    # two 30 s misfires (60 s) between halves of one play whose anchors are identical
+    hits = [hit(t, "A", anchor=0) for t in range(0, 150, 30)]
+    hits += [hit(150, "M1", anchor=140), hit(180, "M2", anchor=170)]
+    hits += [hit(t, "A", anchor=0) for t in range(210, 400, 30)]
+    segs, dropped = build([Region(0, 400, "music")], hits)
+    assert [(s.title, s.start, s.end) for s in segs] == [("A", 0.0, 400.0)]
+    assert dropped == []
+
+
+def test_real_track_between_same_anchor_halves_is_not_swallowed():
+    hits = [hit(t, "A", anchor=0) for t in range(0, 120, 30)]
+    hits += [hit(t, "B", anchor=120) for t in range(120, 210, 30)]        # 90 s: a real segment
+    hits += [hit(t, "A", anchor=0) for t in range(210, 400, 30)]
+    segs, _ = build([Region(0, 400, "music")], hits)
+    assert [s.title for s in segs] == ["A", "B", "A"]
