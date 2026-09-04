@@ -1,7 +1,7 @@
 """ACRCloud identify, cached per (vod_hash, offset). Only called inside music regions.
 The fingerprint is computed locally with the ACRCloud SDK; only that (~4 KB) is uploaded, never audio."""
 from __future__ import annotations
-import base64, hashlib, hmac, io, os, time
+import base64, hashlib, hmac, io, json, os, time
 import numpy as np, requests, soundfile as sf
 from acrcloud import acrcloud_extr_tool
 from pathlib import Path
@@ -35,7 +35,7 @@ class ACR:
                       "signature": sig, "data_type": "fingerprint", "signature_version": "1"},
                 timeout=30)
             r.raise_for_status()
-            resp = r.json()
+            resp = json.loads(r.content)  # ACR serves UTF-8 JSON without a charset; r.json() would assume ISO-8859-1
             code = resp.get("status", {}).get("code", -1)
             if code != 3015 or attempt == 2:
                 break

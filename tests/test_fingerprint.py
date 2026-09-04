@@ -1,5 +1,5 @@
 """Only a locally computed ACRCloud fingerprint leaves the machine; never audio. HTTP is mocked, extractor is real."""
-import base64, hashlib, hmac, time
+import base64, hashlib, hmac, json, time
 import numpy as np, pytest, requests
 from tracksplit import fingerprint
 
@@ -9,10 +9,14 @@ DOC_OK = {"status": {"msg": "Success", "code": 0, "version": "1.0"},
                                   "play_offset_ms": 9040, "acrid": "0123456789abcdef0123456789abcdef"}]}}
 
 
-class _Resp:
-    def __init__(self, body): self.body = body
-    def raise_for_status(self): pass
-    def json(self): return self.body
+def _Resp(body):
+    """A real requests.Response as ACR serves it: UTF-8 JSON under a text/* content type with no charset,
+    which makes requests assume ISO-8859-1 for .text/.json()."""
+    r = requests.Response(); r.status_code = 200
+    r.headers["Content-Type"] = "text/html"
+    r.encoding = requests.utils.get_encoding_from_headers(r.headers)
+    r._content = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    return r
 
 
 @pytest.fixture
@@ -78,3 +82,12 @@ def test_qps_exceeded_is_retried_once(acr):
     a, cap, post = acr
     post.bodies = [{"status": {"msg": "QpS limit exceeded", "code": 3015, "version": "1.0"}}, NO_RESULT]
     assert a.identify(music()) == NO_RESULT and cap["n"] == 2
+
+
+def test_non_ascii_metadata_is_decoded_as_utf8(acr):
+    a, _, post = acr
+    post.body = {"status": {"msg": "Success", "code": 0, "version": "1.0"},
+                 "metadata": {"music": [{"title": "音楽の歌", "artists": [{"name": "Ærø Ånd"}], "score": 100,
+                                         "play_offset_ms": 0, "acrid": "x"}]}}
+    h = fingerprint.parse(a.identify(music()))
+    assert (h["artist"], h["title"]) == ("Ærø Ånd", "音楽の歌")
