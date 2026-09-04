@@ -55,12 +55,14 @@ def _step(q, row, src, wav, man, wd, cfg, acr):
 
     elif stage == "fingerprinted":
         regs = [gate.Region(**r) for r in m["regions"]]
-        segs = segment.build(regs, m["hits"], cfg, wav)
+        segs, dropped = segment.build(regs, m["hits"], cfg, wav)
         m["segments"] = [s.to_dict() for s in segs]
+        m["dropped"] = [s.to_dict() for s in dropped]
         manifest.write(man, m); q.advance(row["id"], "segmented")
-        print(f"[segment] {src.name}: {len(segs)} segments")
+        print(f"[segment] {src.name}: {len(segs)} segments, {len(dropped)} dropped")
         for s in segs:
-            print(f"    {s.start/60:7.1f}m -> {s.end/60:7.1f}m  {s.label}")
+            a = f"  (anchor {s.anchor/60:.1f}m)" if s.anchor is not None else ""
+            print(f"    {s.start/60:7.1f}m -> {s.end/60:7.1f}m  {s.label}{a}")
 
     elif stage == "segmented":
         segs = [segment.Segment(**s) for s in m["segments"]]

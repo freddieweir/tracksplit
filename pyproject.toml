@@ -12,6 +12,7 @@ dependencies = [
     "requests",
     "textual",
     "tomli; python_version < '3.11'",
+    "pyacrcloud>=1.0.12",
 ]
 
 [project.scripts]

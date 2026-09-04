@@ -22,8 +22,10 @@ def _load():
         from panns_inference import AudioTagging, labels
         import torch
         dev = "mps" if torch.backends.mps.is_available() else "cpu"
-        _model = (AudioTagging(checkpoint_path=None, device=dev),
-                  labels.index("Music"), labels.index("Speech"), labels.index("Silence"))
+        at = AudioTagging(checkpoint_path=None, device=dev)
+        if dev == "mps":  # panns_inference only knows cuda/cpu; move it ourselves
+            at.model.to(dev); at.device = dev
+        _model = (at, labels.index("Music"), labels.index("Speech"), labels.index("Silence"))
     return _model
 
 def score(wav: Path, hop_s: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -55,14 +57,14 @@ def regions(music: np.ndarray, speech: np.ndarray, silence: np.ndarray,
         if state == "off":
             run = run + 1 if v else 0
             if run >= open_n:
-                if t - run*hop > start:
-                    out.append(_nonmusic(start, t - run*hop, speech, silence, hop))
-                start, state, run = t - run*hop, "on", 0
+                if t - (run-1)*hop > start:
+                    out.append(_nonmusic(start, t - (run-1)*hop, speech, silence, hop))
+                start, state, run = t - (run-1)*hop, "on", 0
         else:
             run = run + 1 if not v else 0
             if run >= close_n:
-                out.append(Region(start, t - run*hop, "music"))
-                start, state, run = t - run*hop, "off", 0
+                out.append(Region(start, t - (run-1)*hop, "music"))
+                start, state, run = t - (run-1)*hop, "off", 0
     end = total_s
     out.append(Region(start, end, "music") if state == "on"
                else _nonmusic(start, end, speech, silence, hop))
