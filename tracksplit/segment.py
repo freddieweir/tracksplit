@@ -56,12 +56,13 @@ def _continues(prev, h, tol) -> bool:
     return abs(a - b) <= tol or _same_title(prev["hit"]["title"], h["hit"]["title"])
 
 def _smooth(hits, tol):
-    """A lone window disagreeing with both neighbours, which agree with each other, is assigned to their play."""
+    """A lone window that does not continue its predecessor, while the neighbours continue each other
+    (by anchor or title), is assigned to their play."""
     for i in range(1, len(hits) - 1):
-        a, b, c = _anchor(hits[i-1]), _anchor(hits[i]), _anchor(hits[i+1])
-        if _same_play(a, c, tol) and not _same_play(a, b, tol):
-            prev, shift = hits[i-1]["hit"], hits[i]["offset"] - hits[i-1]["offset"]
-            hits[i] = dict(hits[i], hit=dict(prev, play_offset_s=prev["play_offset_s"] + shift))
+        p, m, n = hits[i-1], hits[i], hits[i+1]
+        if p["hit"] and n["hit"] and _continues(p, n, tol) and not _continues(p, m, tol):
+            shift = m["offset"] - p["offset"]
+            hits[i] = dict(m, hit=dict(p["hit"], play_offset_s=p["hit"]["play_offset_s"] + shift))
     return hits
 
 def _runs(rh, tol):

@@ -175,3 +175,13 @@ def test_real_track_between_same_anchor_halves_is_not_swallowed():
     hits += [hit(t, "A", anchor=0) for t in range(210, 400, 30)]
     segs, _ = build([Region(0, 400, "music")], hits)
     assert [s.title for s in segs] == ["A", "B", "A"]
+
+
+def test_lone_misfire_between_same_title_windows_with_drifted_anchors_is_smoothed():
+    # a lone misfire: the neighbours share a title but their anchors differ by more than the tolerance
+    hits = [hit(t, "P", anchor=0, title="Beast Loop") for t in (0, 30, 60)]
+    hits += [hit(90, "C", anchor=80, title="Fade")]
+    hits += [hit(t, "P", anchor=29, title="Beast Loop") for t in (120, 150, 180)]
+    segs, dropped = build([Region(0, 210, "music")], hits)
+    assert [(s.title, s.start, s.end) for s in segs] == [("Beast Loop", 0.0, 210.0)]
+    assert dropped == []
