@@ -185,3 +185,12 @@ def test_lone_misfire_between_same_title_windows_with_drifted_anchors_is_smoothe
     segs, dropped = build([Region(0, 210, "music")], hits)
     assert [(s.title, s.start, s.end) for s in segs] == [("Beast Loop", 0.0, 210.0)]
     assert dropped == []
+
+
+def test_album_and_edition_suffixes_are_stripped():
+    n = segment._norm_title
+    assert n("Song B - The Best Of The Decade") == "song b"
+    assert n("Song C - Live") == n("Song C") == "song c"
+    assert n("Song D (Album Version)") == n("Song D - Album Version") == "song d"
+    assert n("Song E / Band") == "song e band"   # a slash is not an edition marker
+    assert n("Title, With Comma") == "title with comma"

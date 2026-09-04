@@ -35,7 +35,8 @@ def _same_play(a, b, tol):
 def _norm_title(t: str) -> str:
     """'Song A (Radio Mix)' -> 'song a'; strips bracketed/dashed edition suffixes and feat. tails."""
     t = re.sub(r"[\(\[].*?[\)\]]", " ", t.lower())
-    t = re.sub(r"\s+-\s+(radio|extended|original|single|album|club|edit|remaster|\d{4} remaster).*$", " ", t)
+    t = re.sub(r"\s+-\s+((the )?best of|greatest hits|deluxe|edition|version|live|remix|radio|extended|original"
+               r"|single|album|club|edit|remaster|\d{4} remaster).*$", " ", t)
     t = re.sub(r"\b(feat|ft|featuring)\.?\s.*$", " ", t)
     return re.sub(r"[^a-z0-9]+", " ", t).strip()
 
