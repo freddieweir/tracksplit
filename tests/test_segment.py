@@ -49,17 +49,22 @@ def test_short_segment_merges_only_into_same_label_neighbour():
     assert dropped == []
 
 
-def test_anchor_sets_start_and_separates_replays():
+def test_anchor_sets_start_and_replays_stay_separate_only_across_other_tracks():
     region = Region(10, 400, "music")
     hits = [hit(10), hit(40)]                                    # ACR missed the intro
     hits += [hit(t, "A", anchor=5) for t in range(70, 220, 30)]  # play began at 5, before the gate opened
-    hits += [hit(t, "A", anchor=250 + 0.2 * i)                   # replay from the top; anchors drift with pitch
+    hits += [hit(t, "A", anchor=250 + 0.2 * i)                   # back-to-back replay: same title, joins the play
              for i, t in enumerate(range(250, 400, 30))]
     segs, dropped = build([region], hits)
-    assert [(s.title, s.start, s.end) for s in segs] == [("A", 10.0, 250.0), ("A", 250.0, 400.0)]
-    assert segs[0].anchor == 5.0                                 # raw median anchor survives the clamp
-    assert abs(segs[1].anchor - 250.4) < 1e-9
+    assert [(s.title, s.start, s.end) for s in segs] == [("A", 10.0, 400.0)]
+    assert segs[0].anchor == 5.0                                 # anchor of the first cluster survives the clamp
     assert dropped == []
+    # the same track after a different one is a separate play
+    hits = [hit(t, "A", anchor=0) for t in range(0, 120, 30)] + [hit(t, "B", anchor=120) for t in range(120, 240, 30)]
+    hits += [hit(t, "A", anchor=240 + 0.2 * i) for i, t in enumerate(range(240, 400, 30))]
+    segs, _ = build([Region(0, 400, "music")], hits)
+    assert [(s.title, s.start) for s in segs] == [("A", 0.0), ("B", 120.0), ("A", 240.0)]
+    assert abs(segs[2].anchor - 240.5) < 1e-9                    # six anchors 240.0..241.0 drifting: median
 
 
 def test_first_window_survives_fractional_region_start():
@@ -90,3 +95,45 @@ def test_unknown_is_cut_only_where_novelty_peaks(tmp_path):
     one = tmp_path / "one.wav"; sf.write(one, np.concatenate([a, a]), 16000)
     segs, _ = build([Region(0, 240, "music")], unknown, one)
     assert [(s.start, s.end) for s in segs] == [(0.0, 240.0)]
+
+
+def test_loop_track_with_jumping_anchors_is_one_play():
+    # a 4-bar-loop track: ACR's play_offset is ambiguous, so the anchor jumps although the play never stopped
+    anchors = [0, 0, 90, 30, 120, 0, 60, 0]
+    hits = [hit(30 * i, "Loop", anchor=a, title="Loop Song") for i, a in enumerate(anchors)]
+    hits += [hit(t, "B", anchor=240) for t in range(240, 330, 30)]
+    segs, dropped = build([Region(0, 330, "music")], hits)
+    assert [(s.title, s.start, s.end) for s in segs] == [("Loop Song", 0.0, 240.0), ("B", 240.0, 330.0)]
+    assert segs[0].anchor == 0.0 and dropped == []    # anchor of the first window's cluster, not of the jumps
+
+
+def test_release_variants_join_by_normalised_title():
+    # radio mix vs album entry have different intro lengths, so anchors disagree; the title says one play
+    hits = [hit(t, "A-radio", anchor=0, title="Song A (Radio Mix)") for t in (0, 30)]
+    hits += [hit(t, "A-album", anchor=40, title="Song A") for t in (60, 90, 120)]
+    hits += [hit(t, "B", anchor=150) for t in range(150, 240, 30)]
+    segs, dropped = build([Region(0, 240, "music")], hits)
+    assert [(s.title, s.acr_id) for s in segs] == [("Song A", "A-album"), ("B", "B")]  # majority label
+    assert dropped == []
+
+
+def test_artist_prefixed_title_matches_by_suffix():
+    hits = [hit(t, "A1", anchor=0, title="Some Title") for t in (0, 30, 60)]
+    hits += [hit(t, "A2", anchor=100, title="Some Artist - Some Title") for t in (90, 120, 150)]
+    hits += [hit(t, "B", anchor=180) for t in range(180, 270, 30)]
+    segs, _ = build([Region(0, 270, "music")], hits)
+    assert [s.title for s in segs] == ["Some Title", "B"]
+    # but a title that merely contains the other is a different song
+    hits = [hit(t, "C1", anchor=0, title="Fade") for t in (0, 30, 60)]
+    hits += [hit(t, "C2", anchor=100, title="Fade To The Edge") for t in (90, 120, 150)]
+    segs, _ = build([Region(0, 180, "music")], hits)
+    assert [s.title for s in segs] == ["Fade", "Fade To The Edge"]
+
+
+def test_short_segment_merges_by_normalised_label():
+    segs = [segment.Segment(0, 150, "song", "X", "Song A", 90, "a"),
+            segment.Segment(150, 180, "song", "X", "Song A (Extended Mix)", 90, "a-ext"),
+            segment.Segment(180, 400, "song", "Y", "Other", 90, "o")]
+    kept, dropped = segment._drop_short(segs, CFG)
+    assert [(s.title, s.start, s.end) for s in kept] == [("Song A", 0.0, 180.0), ("Other", 180.0, 400.0)]
+    assert dropped == []

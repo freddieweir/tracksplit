@@ -2,7 +2,7 @@
 A *play* is a run of windows whose anchor (offset - play_offset_s = the song's start time in the VOD) is
 continuous; catalogue ids and titles are labels only. Unknown gaps are cut at self-similarity novelty peaks."""
 from __future__ import annotations
-import math
+import math, re
 import numpy as np
 from collections import Counter
 from dataclasses import dataclass, asdict
@@ -32,6 +32,29 @@ def _anchor(h):
 def _same_play(a, b, tol):
     return a is not None and b is not None and abs(a - b) <= tol
 
+def _norm_title(t: str) -> str:
+    """'Song A (Radio Mix)' -> 'song a'; strips bracketed/dashed edition suffixes and feat. tails."""
+    t = re.sub(r"[\(\[].*?[\)\]]", " ", t.lower())
+    t = re.sub(r"\s+-\s+(radio|extended|original|single|album|club|edit|remaster|\d{4} remaster).*$", " ", t)
+    t = re.sub(r"\b(feat|ft|featuring)\.?\s.*$", " ", t)
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+def _same_title(x: str, y: str) -> bool:
+    """Equal after normalisation, or one is the other with an artist prefixed ('Some Artist - Some Title')."""
+    a, b = _norm_title(x), _norm_title(y)
+    return bool(a) and (a == b or a.endswith(" " + b) or b.endswith(" " + a))
+
+def _same_label(p: "Segment", q: "Segment") -> bool:
+    return _same_title(p.title, q.title) if p.kind == q.kind == "song" else p.kind == q.kind
+
+def _continues(prev, h, tol) -> bool:
+    """h extends prev's run: both unknown, or the same play by anchor, or the same title
+    (loop-based tracks and live re-cues make play_offset jump although the play never stopped)."""
+    a, b = _anchor(prev), _anchor(h)
+    if a is None or b is None:
+        return a is None and b is None
+    return abs(a - b) <= tol or _same_title(prev["hit"]["title"], h["hit"]["title"])
+
 def _smooth(hits, tol):
     """A lone window disagreeing with both neighbours, which agree with each other, is assigned to their play."""
     for i in range(1, len(hits) - 1):
@@ -42,15 +65,13 @@ def _smooth(hits, tol):
     return hits
 
 def _runs(rh, tol):
-    """Consecutive windows grouped into plays (anchor-continuous, window to window) and unknown stretches."""
-    runs, last = [], None
+    """Consecutive windows grouped into plays (window-to-window continuity) and unknown stretches."""
+    runs = []
     for h in rh:
-        a = _anchor(h)
-        if runs and (a is None) == (last is None) and (a is None or _same_play(a, last, tol)):
+        if runs and _continues(runs[-1][-1], h, tol):
             runs[-1].append(h)
         else:
             runs.append([h])
-        last = a
     return runs
 
 def build(regs: list[Region], hits: list[dict], cfg: CreatorCfg, wav: Path | None
@@ -92,7 +113,10 @@ def _mk(run, region_start) -> Segment:
     """One play. Start = median anchor, i.e. where play_offset says the song began in the VOD; never later
     than the first matching window, never earlier than the region. Label = most frequent (artist, title)."""
     hs = [h["hit"] for h in run]
-    anchor = float(np.median([_anchor(h) for h in run]))
+    anchors = [_anchor(h) for h in run]
+    tol = 15.0 if len(run) < 2 else max(15.0, abs(run[1]["offset"] - run[0]["offset"]) / 2)
+    anchor = float(np.median([a for a in anchors if abs(a - anchors[0]) <= tol]))  # the first window's cluster;
+    # later clusters are loop ambiguity or a re-cue, not where this play began
     artist, title = Counter((h["artist"], h["title"]) for h in hs).most_common(1)[0][0]
     acr_id = next(h["acr_id"] for h in hs if (h["artist"], h["title"]) == (artist, title))
     start = max(min(anchor, run[0]["offset"]), region_start)
@@ -140,9 +164,9 @@ def _drop_short(segs, cfg):
     for i, s in enumerate(segs):
         if s.end - s.start >= cfg.min_segment_s or s.kind in ("talk", "silence"):
             out.append(s)
-        elif out and out[-1].label == s.label:
+        elif out and _same_label(out[-1], s):
             out[-1].end = s.end
-        elif i + 1 < len(segs) and segs[i+1].label == s.label:
+        elif i + 1 < len(segs) and _same_label(segs[i+1], s):
             segs[i+1].start = s.start
         else:
             dropped.append(s)
