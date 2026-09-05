@@ -13,9 +13,9 @@ Run them before every commit; each commit is one behaviour change with the test 
 ## Pull requests
 
 Every PR body follows `.github/PULL_REQUEST_TEMPLATE.md`. The rules, the exceptions and the
-redaction list are in `.github/PR_STANDARD.md`, and the **PR Standard** workflow enforces them.
+redaction list are in `.github/PR_STANDARD.md`, and the **PR Standard** workflow enforces them. The workflow, the checker in `.github/scripts/` and both documents are copies deployed from tomb-of-nazarick by `fortify`; edit them there.
 In short: H1 and a one-paragraph lede, a Demo (GIF plus mp4, published with
-`scripts/publish-demo.sh <PR> recording.mp4`, or one honest `**Demo waived:** <reason>` line),
+`.github/scripts/publish-demo.sh <PR> recording.mp4`, or one honest `**Demo waived:** <reason>` line),
 a Test Plan with checked boxes for what actually ran, `## Proof (redacted)` with real output
 collapsed in `<details>`, collapsed Full Summary and Files blocks, and a Provenance section.
 Docs-only PRs skip the demo and proof automatically.
