@@ -21,7 +21,8 @@ collapsed in `<details>`, collapsed Full Summary and Files blocks, and a Provena
 Docs-only PRs skip the demo and proof automatically.
 
 Redact before recording or pasting: VOD names and track titles become `<vod>` and
-`<artist> - <title>`; hosts, home paths, serials, emails and keys never appear. Never commit
+`<artist> - <title>`; hosts, home paths, serials, emails, keys and agent session links never
+appear. Name the tool once, in Provenance, with no `Generated with` footer. Never commit
 VODs, outputs or the ACR cache; ACR credentials come from the environment only.
 
 Check a drafted body before opening the PR:
